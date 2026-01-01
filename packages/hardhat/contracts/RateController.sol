@@ -33,4 +33,11 @@ contract RateController {
             revert Staking__InvalidSavingsRate();
         }
     }
+
+    /**
+     * @notice Xác nhận quyền sở hữu code - Giúp thay đổi Bytecode để Verify thành công
+     */
+    function getAuthor() external pure returns (string memory) {
+        return "Nguyen Minh Thien - MSSV 22120344"; 
+    }
 }
