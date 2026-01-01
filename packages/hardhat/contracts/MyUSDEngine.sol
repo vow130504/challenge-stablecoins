@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
+// Phiên bản chỉnh sửa bởi Nguyễn Minh Thiện cho đồ án Stablecoin
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -251,10 +252,6 @@ contract MyUSDEngine is Ownable {
         emit Liquidation(user, msg.sender, amountForLiquidator, userDebtValue, i_oracle.getETHMyUSDPrice());
     }
     
-    // ================================================================
-    // 🧪 TEST SECTION: CHỈ DÙNG ĐỂ CHẤM ĐIỂM CHECKPOINT 3
-    // (Sau khi xong checkpoint này, bạn có thể xóa hoặc comment lại)
-    // ================================================================
 
     // /**
     //  * @notice Minh chứng Goal 1 & 2: Tính lãi và cập nhật tỷ giá
@@ -287,4 +284,10 @@ contract MyUSDEngine is Ownable {
     // function TEST_setBorrowRate(uint256 newRate) public {
     //     borrowRate = newRate;
     // }
+    /**
+     * @notice Xác nhận quyền sở hữu code
+     */
+    function getAuthor() public pure returns (string memory) {
+        return "Nguyen Minh Thien - MSSV 22120344";
+    }
 }

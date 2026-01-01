@@ -7,7 +7,7 @@ import { GenericContractsDeclaration } from "~~/utils/scaffold-eth/contract";
 const deployedContracts = {
   11155111: {
     DEX: {
-      address: "0x4c32Cb07ed2e5449a9F121266f6A91fa4511De5e",
+      address: "0x9696a1639fBA257ce91fCB94F0F0c44Cc0696F35",
       abi: [
         {
           inputs: [
@@ -312,10 +312,10 @@ const deployedContracts = {
         },
       ],
       inheritedFunctions: {},
-      deployedOnBlock: 9958537,
+      deployedOnBlock: 9958647,
     },
     MyUSD: {
-      address: "0x34F468E5224a51d0Ef90c341886CA8C0D162D958",
+      address: "0x757D7F8c9e2B0241bD57A8b043509F897ff0230d",
       abi: [
         {
           inputs: [
@@ -828,10 +828,10 @@ const deployedContracts = {
         renounceOwnership: "@openzeppelin/contracts/access/Ownable.sol",
         transferOwnership: "@openzeppelin/contracts/access/Ownable.sol",
       },
-      deployedOnBlock: 9958536,
+      deployedOnBlock: 9958646,
     },
     MyUSDEngine: {
-      address: "0xC471ed2AF97d32729A69F2c920406e8b7aF5D2F7",
+      address: "0x02eB14dB27053BCbA5BDC5EF627A490B6E4fAF2c",
       abi: [
         {
           inputs: [
@@ -1167,6 +1167,19 @@ const deployedContracts = {
           type: "function",
         },
         {
+          inputs: [],
+          name: "getAuthor",
+          outputs: [
+            {
+              internalType: "string",
+              name: "",
+              type: "string",
+            },
+          ],
+          stateMutability: "pure",
+          type: "function",
+        },
+        {
           inputs: [
             {
               internalType: "address",
@@ -1372,10 +1385,10 @@ const deployedContracts = {
         renounceOwnership: "@openzeppelin/contracts/access/Ownable.sol",
         transferOwnership: "@openzeppelin/contracts/access/Ownable.sol",
       },
-      deployedOnBlock: 9958540,
+      deployedOnBlock: 9958650,
     },
     MyUSDStaking: {
-      address: "0x8F2F87de61e3A9d4486787398d83b6bFaD642f40",
+      address: "0x7378B8AaE725FCB68bDC23B56eC57e0dda0b74B8",
       abi: [
         {
           inputs: [
@@ -1754,10 +1767,10 @@ const deployedContracts = {
         renounceOwnership: "@openzeppelin/contracts/access/Ownable.sol",
         transferOwnership: "@openzeppelin/contracts/access/Ownable.sol",
       },
-      deployedOnBlock: 9958539,
+      deployedOnBlock: 9958649,
     },
     Oracle: {
-      address: "0x9eCADD5008a09CA731A5eBA0d3649506175CEb2e",
+      address: "0x658b9E800Ed88E3D1F3CEfeFF71747F8677F34e7",
       abi: [
         {
           inputs: [
@@ -1829,10 +1842,10 @@ const deployedContracts = {
         },
       ],
       inheritedFunctions: {},
-      deployedOnBlock: 9958538,
+      deployedOnBlock: 9958648,
     },
     RateController: {
-      address: "0x63bd71DF02f42410Cef853cf0f3330BD27939739",
+      address: "0xFbcA2a245EE8300fb75229eb51BA053ffAe76D7d",
       abi: [
         {
           inputs: [
@@ -1888,7 +1901,7 @@ const deployedContracts = {
         },
       ],
       inheritedFunctions: {},
-      deployedOnBlock: 9958535,
+      deployedOnBlock: 9958645,
     },
   },
 } as const;
