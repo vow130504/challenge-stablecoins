@@ -13,6 +13,7 @@ error Engine__InvalidBorrowRate();
 error Engine__NotRateController();
 error Engine__InsufficientCollateral();
 error Engine__TransferFailed();
+// Errors MyUSD__InsufficientBalance and MyUSD__InsufficientAllowance are imported from MyUSD.sol
 
 contract MyUSDEngine is Ownable {
     uint256 private constant COLLATERAL_RATIO = 150; // 150% collateralization required
@@ -24,16 +25,14 @@ contract MyUSDEngine is Ownable {
     Oracle private i_oracle;
     MyUSDStaking private i_staking;
     address private i_rateController;
-
     uint256 public borrowRate; // Annual interest rate for borrowers in basis points (1% = 100)
 
     // Total debt shares in the pool
     uint256 public totalDebtShares;
-
     // Exchange rate between debt shares and MyUSD (1e18 precision)
     uint256 public debtExchangeRate;
     uint256 public lastUpdateTime;
-
+    
     mapping(address => uint256) public s_userCollateral;
     mapping(address => uint256) public s_userDebtShares;
 
@@ -70,36 +69,222 @@ contract MyUSDEngine is Ownable {
     }
 
     // Checkpoint 2: Depositing Collateral & Understanding Value
-    function addCollateral() public payable {}
+    function addCollateral() public payable {
+        if (msg.value == 0) revert Engine__InvalidAmount();
+        s_userCollateral[msg.sender] += msg.value;
+        emit CollateralAdded(msg.sender, msg.value, i_oracle.getETHMyUSDPrice());
+    }
 
-    function calculateCollateralValue(address user) public view returns (uint256) {}
+    function calculateCollateralValue(address user) public view returns (uint256) {
+        uint256 collateralAmount = s_userCollateral[user];
+        return (collateralAmount * i_oracle.getETHMyUSDPrice()) / PRECISION;
+    }
 
     // Checkpoint 3: Interest Calculation System
-    function _getCurrentExchangeRate() internal view returns (uint256) {}
+    function _getCurrentExchangeRate() internal view returns (uint256) {
+        if (totalDebtShares == 0) return debtExchangeRate;
+        
+        uint256 timeElapsed = block.timestamp - lastUpdateTime;
+        if (timeElapsed == 0 || borrowRate == 0) return debtExchangeRate;
+        
+        uint256 totalDebtValue = (totalDebtShares * debtExchangeRate) / PRECISION;
+        uint256 interest = (totalDebtValue * borrowRate * timeElapsed) / (SECONDS_PER_YEAR * 10000);
+        
+        return debtExchangeRate + (interest * PRECISION) / totalDebtShares;
+    }
 
-    function _accrueInterest() internal {}
+    function _accrueInterest() internal {
+        if (totalDebtShares == 0) {
+            lastUpdateTime = block.timestamp;
+            return;
+        }
+        
+        debtExchangeRate = _getCurrentExchangeRate();
+        lastUpdateTime = block.timestamp;
+    }
 
-    function _getMyUSDToShares(uint256 amount) internal view returns (uint256) {}
+    function _getMyUSDToShares(uint256 amount) internal view returns (uint256) {
+        uint256 currentExchangeRate = _getCurrentExchangeRate();
+        return (amount * PRECISION) / currentExchangeRate;
+    }
 
     // Checkpoint 4: Minting MyUSD & Position Health
-    function getCurrentDebtValue(address user) public view returns (uint256) {}
+    function getCurrentDebtValue(address user) public view returns (uint256) {
+        if (s_userDebtShares[user] == 0) return 0;
+        uint256 currentExchangeRate = _getCurrentExchangeRate();
+        return (s_userDebtShares[user] * currentExchangeRate) / PRECISION;
+    }
 
-    function calculatePositionRatio(address user) public view returns (uint256) {}
+    function calculatePositionRatio(address user) public view returns (uint256) {
+        uint256 debtValue = getCurrentDebtValue(user);
+        if (debtValue == 0) return type(uint256).max;
+        
+        uint256 collateralValue = calculateCollateralValue(user);
+        return (collateralValue * PRECISION) / debtValue;
+    }
 
-    function _validatePosition(address user) internal view {}
+    function _validatePosition(address user) internal view {
+        uint256 positionRatio = calculatePositionRatio(user);
+        if ((positionRatio * 100) < COLLATERAL_RATIO * PRECISION) {
+            revert Engine__UnsafePositionRatio();
+        }
+    }
 
-    function mintMyUSD(uint256 mintAmount) public {}
+    function mintMyUSD(uint256 mintAmount) public {
+        if (mintAmount == 0) revert Engine__InvalidAmount();
+        
+        _accrueInterest(); // Accrue interest before modifying debt
+        
+        uint256 shares = _getMyUSDToShares(mintAmount);
+        s_userDebtShares[msg.sender] += shares;
+        totalDebtShares += shares;
+        
+        _validatePosition(msg.sender);
+        i_myUSD.mintTo(msg.sender, mintAmount);
+        
+        emit DebtSharesMinted(msg.sender, mintAmount, shares);
+    }
 
     // Checkpoint 5: Accruing Interest & Managing Borrow Rates
-    function setBorrowRate(uint256 newRate) external onlyRateController {}
+    function setBorrowRate(uint256 newRate) external onlyRateController {
+        // Check if new borrow rate is less than savings rate (Checkpoint 9 requirement)
+        if (newRate < i_staking.savingsRate()) revert Engine__InvalidBorrowRate();
+        
+        _accrueInterest();
+        borrowRate = newRate;
+        emit BorrowRateUpdated(newRate);
+    }
 
     // Checkpoint 6: Repaying Debt & Withdrawing Collateral
-    function repayUpTo(uint256 amount) public {}
+    function repayUpTo(uint256 amount) public {
+        _accrueInterest(); // Always accrue interest first
+        
+        uint256 amountInShares = _getMyUSDToShares(amount);
+        // Check if user has enough debt
+        if (amountInShares > s_userDebtShares[msg.sender]) {
+            amountInShares = s_userDebtShares[msg.sender];
+            amount = getCurrentDebtValue(msg.sender);
+        }
 
-    function withdrawCollateral(uint256 amount) external {}
+        if (amount == 0 || i_myUSD.balanceOf(msg.sender) < amount) {
+            revert MyUSD__InsufficientBalance();
+        }
+
+        if (i_myUSD.allowance(msg.sender, address(this)) < amount) {
+            revert MyUSD__InsufficientAllowance();
+        }
+
+        s_userDebtShares[msg.sender] -= amountInShares;
+        totalDebtShares -= amountInShares;
+
+        i_myUSD.burnFrom(msg.sender, amount);
+
+        emit DebtSharesBurned(msg.sender, amount, amountInShares);
+    }
+
+    function withdrawCollateral(uint256 amount) external {
+        if (amount == 0) revert Engine__InvalidAmount();
+        if (s_userCollateral[msg.sender] < amount) revert Engine__InsufficientCollateral();
+        
+        _accrueInterest(); // Good practice to keep state updated
+
+        // Temporarily reduce collateral
+        s_userCollateral[msg.sender] -= amount;
+
+        // Validate position if user has debt
+        if (s_userDebtShares[msg.sender] > 0) {
+            _validatePosition(msg.sender);
+        }
+
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        if (!success) revert Engine__TransferFailed();
+
+        emit CollateralWithdrawn(msg.sender, amount, i_oracle.getETHMyUSDPrice());
+    }
 
     // Checkpoint 7: Liquidation - Enforcing System Stability
-    function isLiquidatable(address user) public view returns (bool) {}
+    function isLiquidatable(address user) public view returns (bool) {
+        uint256 positionRatio = calculatePositionRatio(user);
+        return (positionRatio * 100) < COLLATERAL_RATIO * PRECISION;
+    }
 
-    function liquidate(address user) external {}
+    function liquidate(address user) external {
+        _accrueInterest(); // Critical for correct debt calculation
+
+        if (!isLiquidatable(user)) {
+            revert Engine__NotLiquidatable();
+        }
+
+        uint256 userDebtValue = getCurrentDebtValue(user);
+        uint256 userCollateral = s_userCollateral[user];
+        uint256 collateralValue = calculateCollateralValue(user);
+
+        if (i_myUSD.balanceOf(msg.sender) < userDebtValue) {
+            revert MyUSD__InsufficientBalance();
+        }
+
+        if (i_myUSD.allowance(msg.sender, address(this)) < userDebtValue) {
+            revert MyUSD__InsufficientAllowance();
+        }
+
+        // Burn debt from liquidator
+        i_myUSD.burnFrom(msg.sender, userDebtValue);
+
+        // Clear user debt
+        totalDebtShares -= s_userDebtShares[user];
+        s_userDebtShares[user] = 0;
+
+        // Calculate collateral reward
+        uint256 collateralToCoverDebt = (userDebtValue * userCollateral) / collateralValue;
+        uint256 rewardAmount = (collateralToCoverDebt * LIQUIDATOR_REWARD) / 100;
+        uint256 amountForLiquidator = collateralToCoverDebt + rewardAmount;
+        
+        if (amountForLiquidator > userCollateral) {
+            amountForLiquidator = userCollateral;
+        }
+
+        s_userCollateral[user] = userCollateral - amountForLiquidator;
+
+        (bool sent, ) = payable(msg.sender).call{ value: amountForLiquidator }("");
+        if (!sent) revert Engine__TransferFailed();
+
+        emit Liquidation(user, msg.sender, amountForLiquidator, userDebtValue, i_oracle.getETHMyUSDPrice());
+    }
+    
+    // ================================================================
+    // 🧪 TEST SECTION: CHỈ DÙNG ĐỂ CHẤM ĐIỂM CHECKPOINT 3
+    // (Sau khi xong checkpoint này, bạn có thể xóa hoặc comment lại)
+    // ================================================================
+
+    // /**
+    //  * @notice Minh chứng Goal 1 & 2: Tính lãi và cập nhật tỷ giá
+    //  * Giả lập việc trôi qua `timeElapsed` giây với tổng nợ giả định `mockTotalShares`
+    //  */
+    // function TEST_simulateAccrual(uint256 timeElapsed, uint256 mockTotalShares) public view returns (uint256 newExchangeRate, uint256 interestEarned) {
+    //     // 1. Lấy tỷ giá hiện tại (giả sử là 1e18 nếu chưa có gì)
+    //     uint256 currentRate = debtExchangeRate;
+        
+    //     // 2. Tính toán theo logic của hàm _getCurrentExchangeRate
+    //     uint256 totalDebtValue = (mockTotalShares * currentRate) / PRECISION;
+    //     uint256 interest = (totalDebtValue * borrowRate * timeElapsed) / (SECONDS_PER_YEAR * 10000);
+        
+    //     // 3. Trả về kết quả
+    //     newExchangeRate = currentRate + (interest * PRECISION) / mockTotalShares;
+    //     interestEarned = interest;
+    // }
+
+    // /**
+    //  * @notice Minh chứng Goal 3: Quy đổi từ MyUSD sang Shares
+    //  */
+    // function TEST_calculateShares(uint256 myUSDAmount, uint256 currentExchangeRate) public pure returns (uint256 shares) {
+    //     // Logic giống hàm _getMyUSDToShares
+    //     return (myUSDAmount * 1e18) / currentExchangeRate; // 1e18 là PRECISION
+    // }
+
+    // /**
+    //  * @notice Setter để chỉnh nhanh lãi suất nhằm test (Chỉ dùng cho test)
+    //  */
+    // function TEST_setBorrowRate(uint256 newRate) public {
+    //     borrowRate = newRate;
+    // }
 }
